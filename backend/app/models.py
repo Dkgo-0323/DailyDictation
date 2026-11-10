@@ -53,6 +53,7 @@ class User(UserBase, table=True):
     hashed_password: str
     created_at: datetime | None = Field(default_factory=get_datetime_utc)
     items: list[Item] = Relationship(back_populates="owner", cascade_delete=True)
+    notes: list[Note] = Relationship(back_populates="owner", cascade_delete=True)
 
 
 # Properties to return via API, id is always required
@@ -102,6 +103,46 @@ class ItemPublic(ItemBase):
 
 class ItemsPublic(SQLModel):
     data: list[ItemPublic]
+    count: int
+
+
+# Shared properties; both omitted fields and explicit null are allowed.
+class NoteBase(SQLModel):
+    title: str | None = Field(default=None, max_length=255)
+    content: str | None = Field(default=None, max_length=5000)
+
+
+class NoteCreate(NoteBase):
+    pass
+
+
+# Use model_dump(exclude_unset=True) to preserve explicit null in PATCH requests.
+class NoteUpdate(NoteBase):
+    pass
+
+
+class Note(NoteBase, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    owner_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE"
+    )
+    created_at: datetime | None = Field(default_factory=get_datetime_utc)
+    updated_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_column_kwargs={"onupdate": get_datetime_utc},
+    )
+    owner: User | None = Relationship(back_populates="notes")
+
+
+class NotePublic(NoteBase):
+    id: uuid.UUID
+    owner_id: uuid.UUID
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class NotesPublic(SQLModel):
+    data: list[NotePublic]
     count: int
 
 

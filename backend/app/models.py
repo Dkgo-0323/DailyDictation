@@ -2,6 +2,7 @@ import uuid
 from datetime import UTC, datetime
 
 from pydantic import EmailStr
+from sqlalchemy import CheckConstraint, DateTime, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -122,13 +123,28 @@ class NoteUpdate(NoteBase):
 
 
 class Note(NoteBase, table=True):
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_id", "idempotency_key", name="uq_note_owner_idempotency_key"
+        ),
+        CheckConstraint("version >= 1", name="ck_note_version_positive"),
+    )
+
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     owner_id: uuid.UUID = Field(
         foreign_key="user.id", nullable=False, ondelete="CASCADE"
     )
-    created_at: datetime | None = Field(default_factory=get_datetime_utc)
+    # Populated from the creation request header, not from the editable body.
+    # The same user must reuse this UUID when retrying the same creation.
+    idempotency_key: uuid.UUID | None = Field(default=None)
+    # The API must compare and increment this in the same atomic UPDATE.
+    version: int = Field(default=1, ge=1, nullable=False)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc, sa_type=DateTime(timezone=True)
+    )
     updated_at: datetime | None = Field(
         default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"onupdate": get_datetime_utc},
     )
     owner: User | None = Relationship(back_populates="notes")
@@ -137,6 +153,7 @@ class Note(NoteBase, table=True):
 class NotePublic(NoteBase):
     id: uuid.UUID
     owner_id: uuid.UUID
+    version: int = Field(ge=1)
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
